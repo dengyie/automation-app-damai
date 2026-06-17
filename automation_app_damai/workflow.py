@@ -1,9 +1,12 @@
 from automation_runner.workflows import (
     ManagedWorkflow,
-    WorkflowResult,
     WorkflowStep,
     run_workflow_steps,
 )
+
+
+def describe_optional_capabilities(ocr=None):
+    return {"ocr": "enabled" if ocr is not None else "disabled"}
 
 
 def create_workflow(session_factory, context, options) -> ManagedWorkflow:

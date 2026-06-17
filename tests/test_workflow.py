@@ -2,7 +2,7 @@ from pathlib import Path
 
 from automation_core.drivers import ActionResult, ArtifactHandle, SessionInfo
 from automation_runner import WorkflowContext, WorkflowOptions
-from automation_app_damai.workflow import create_workflow
+from automation_app_damai.workflow import create_workflow, describe_optional_capabilities
 
 
 class FakeSession:
@@ -41,3 +41,15 @@ def test_create_workflow_uses_public_automation_runner_contract():
     assert workflow.name == "damai-web"
     assert result.success is True
     assert result.actions[0].message == "open"
+
+
+def test_damai_workflow_reports_optional_capability_flag():
+    assert describe_optional_capabilities()["ocr"] == "disabled"
+
+
+def test_damai_workflow_can_report_optional_ocr_capability():
+    from automation_plugin_ocr.fake import FakeOcrExtractor
+
+    capabilities = describe_optional_capabilities(ocr=FakeOcrExtractor(text="ok"))
+
+    assert capabilities["ocr"] == "enabled"

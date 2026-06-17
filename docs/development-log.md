@@ -54,3 +54,9 @@ Result:
 Total coverage: 95.45%
 Required coverage: 80%
 ```
+
+### Follow-up Note
+
+- Optional plugin integration checks should run with the repository's full test
+  suite instead of a single test file so coverage thresholds remain meaningful
+  and do not create false failures.
