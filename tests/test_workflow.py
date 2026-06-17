@@ -43,13 +43,14 @@ def test_create_workflow_uses_public_automation_runner_contract():
     assert result.actions[0].message == "open"
 
 
-def test_damai_workflow_reports_optional_capability_flag():
-    assert describe_optional_capabilities()["ocr"] == "disabled"
+def test_damai_workflow_reports_visual_capability_flag():
+    assert describe_optional_capabilities()["visual_challenges"] == "disabled"
 
 
-def test_damai_workflow_can_report_optional_ocr_capability():
-    from automation_plugin_ocr.fake import FakeOcrExtractor
+def test_damai_workflow_can_report_optional_slidex_visual_capability():
+    class FakeVisualSolver:
+        pass
 
-    capabilities = describe_optional_capabilities(ocr=FakeOcrExtractor(text="ok"))
+    capabilities = describe_optional_capabilities(visual_solver=FakeVisualSolver())
 
-    assert capabilities["ocr"] == "enabled"
+    assert capabilities["visual_challenges"] == "enabled"

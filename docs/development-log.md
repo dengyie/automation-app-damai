@@ -74,3 +74,26 @@ Required coverage: 80%
   and do not create false failures.
 - Final audit also confirmed the documented Poetry path:
   `poetry install && poetry run pytest -q`.
+
+## 2026-06-18: Slidex Visual Platform Alignment
+
+### Completed
+
+- Replaced the app-side optional OCR capability label with a generic
+  `visual_challenges` capability.
+- Removed test-time usage of `automation_plugin_ocr`.
+- Documented `slidex` as the future source for OCR and captcha visual
+  challenge capabilities.
+
+### Decision Record
+
+#### Decision: consume visual challenge solvers by injection
+
+- Problem: `slidex` is becoming the ecosystem visual platform, but its new OCR
+  and unified vision APIs are being developed independently.
+- Choice: keep this application dependency-free for now and expose a generic
+  `visual_solver` capability slot.
+- Reason: Damai can adopt `slidex.vision` as soon as that API lands without
+  taking a hard dependency on an unfinished interface today.
+- Risk: a later integration pass must wire the concrete `slidex` solver and
+  add compatibility tests.

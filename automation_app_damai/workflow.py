@@ -5,8 +5,10 @@ from automation_runner.workflows import (
 )
 
 
-def describe_optional_capabilities(ocr=None):
-    return {"ocr": "enabled" if ocr is not None else "disabled"}
+def describe_optional_capabilities(visual_solver=None):
+    return {
+        "visual_challenges": "enabled" if visual_solver is not None else "disabled"
+    }
 
 
 def create_workflow(session_factory, context, options) -> ManagedWorkflow:
