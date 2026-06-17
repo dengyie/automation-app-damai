@@ -41,6 +41,18 @@
 - Risk: Poetry remains the documented package manager, so CI should later
   verify the same setup through Poetry as well.
 
+#### Decision: keep `poetry.lock` after the final verification pass
+
+- Problem: the final completion audit needs stronger proof than raw venv runs;
+  it must show that the documented `poetry install && poetry run pytest` path
+  works too.
+- Choice: install Poetry in the local venv, run the Poetry-managed path, and
+  keep the resulting `poetry.lock`.
+- Reason: the repository now has CI based on Poetry, so the lockfile improves
+  reproducibility instead of being incidental noise.
+- Risk: dependency upgrades now need intentional lockfile changes rather than
+  loose dev-environment drift.
+
 ### Verification
 
 ```bash
@@ -60,3 +72,5 @@ Required coverage: 80%
 - Optional plugin integration checks should run with the repository's full test
   suite instead of a single test file so coverage thresholds remain meaningful
   and do not create false failures.
+- Final audit also confirmed the documented Poetry path:
+  `poetry install && poetry run pytest -q`.
