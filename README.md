@@ -9,3 +9,5 @@ This repository owns:
 - Damai URLs and package identifiers
 - Damai config validation
 - Damai-facing CLI glue
+
+GitHub repository: `https://github.com/dengyie/automation-app-damai`
