@@ -182,3 +182,79 @@ Status: passed.
 
 Real Damai browser flows still need to provide the concrete Playwright page and
 decide where visual challenge results enter the user-facing report.
+
+## 2026-06-18: Phase 5 Damai Live Visual Helper
+
+### Completed
+
+- Added `solve_slider_visual_challenge(...)` to connect the existing
+  `PLAYWRIGHT_PAGE` request builder, injected slidex visual solver, and workflow
+  payload conversion in one production-callable async helper.
+- Added offline tests with a fake visual solver and fake page object, proving
+  the helper passes page ownership through without starting a browser.
+- Kept `create_workflow(...)` unchanged so the default smoke workflow remains
+  synchronous and independent from slidex/browser/network requirements.
+- Updated README usage guidance for production workflows that already own a
+  Playwright page.
+
+### Decision Record
+
+#### Decision: expose an async production helper instead of changing the smoke workflow
+
+- Problem: the current smoke workflow is synchronous and offline, while slidex
+  solving is async and requires a real Playwright page in production.
+- Choice: add `solve_slider_visual_challenge(...)` as an app-layer helper that
+  production flows can call at the point where they own a page.
+- Reason: this completes the live-browser call boundary without weakening the
+  no-live-default test policy or moving browser concepts into automation-kit.
+- Risk: real target-site behavior still needs an opt-in browser E2E run with an
+  actual Damai challenge page.
+
+### Verification
+
+Focused live-helper slice:
+
+```bash
+PYTHONPATH=/Users/mango/project/codex/automation-app-damai:/Users/mango/project/codex/automation-kit:/Users/mango/project/codex/slidex /opt/homebrew/bin/pytest -q -o addopts='' tests/test_workflow.py -k 'solve_slider_visual_challenge'
+```
+
+Result:
+
+```text
+2 passed, 6 deselected
+```
+
+Default offline suite:
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Result:
+
+```text
+11 passed, 3 skipped
+Total coverage: 97.62%
+Required coverage: 80%
+```
+
+### Production Code Quality Review
+
+Mode: checkpoint.
+
+Findings: no P0/P1/P2 correctness, boundary, safety, or irreversible operation
+issues found in the current diff.
+
+Improvement suggestions:
+
+- Keep the eventual real browser E2E run opt-in because it depends on target
+  site state and CAPTCHA availability.
+
+Quality score: 91/100.
+
+Status: passed.
+
+### Todo Status
+
+- Live browser challenge helper: done.
+- Real target-site Playwright E2E: pending opt-in production validation.
