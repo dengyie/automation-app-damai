@@ -11,7 +11,8 @@ This repository owns:
 - Damai-facing CLI glue
 
 Optional visual challenge capabilities, including OCR and captcha solving,
-should be injected from `slidex` when needed. This repository must not depend
-on the archived `automation-plugin-ocr` package.
+are injected from `slidex` when needed through the app-layer visual helper
+functions in `automation_app_damai.workflow`. Default offline tests do not
+require `slidex`, browsers, devices, or network access.
 
 GitHub repository: `https://github.com/dengyie/automation-app-damai`

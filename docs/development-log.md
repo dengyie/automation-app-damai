@@ -97,3 +97,88 @@ Required coverage: 80%
   taking a hard dependency on an unfinished interface today.
 - Risk: a later integration pass must wire the concrete `slidex` solver and
   add compatibility tests.
+
+## 2026-06-18: Phase 4 Damai Slidex Injection Baseline
+
+### Completed
+
+- Added lazy slidex integration helpers in `automation_app_damai.workflow`:
+  - `build_slider_visual_request(...)`
+  - `visual_result_to_workflow_payload(...)`
+- Extended `create_workflow(...)` with an optional `visual_solver` parameter
+  while preserving the offline runner behavior.
+- Added app-level compatibility tests for the latest slidex
+  `PLAYWRIGHT_PAGE` slider request contract and JSON-safe adapter payloads.
+- Kept default tests independent from slidex, browsers, devices, and network by
+  skipping real slidex checks when slidex is not import-visible.
+- Updated `README.md` to describe the current app-layer visual helper path.
+
+### Decision Record
+
+#### Decision: expose helpers instead of running async visual solving inside the smoke workflow
+
+- Problem: slidex visual solving is async and may need a real Playwright page,
+  while the current Damai smoke workflow is a synchronous offline
+  `ManagedWorkflow`.
+- Choice: add request-building and result-conversion helpers at the app layer,
+  and let production workflows call them where a real page exists.
+- Reason: this satisfies the automation-kit boundary without making the default
+  smoke workflow depend on browser runtime state.
+- Risk: production Damai flows still need a later live-browser integration pass
+  to call the helpers during a real visual challenge.
+
+### Verification
+
+Default offline suite:
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Result:
+
+```text
+9 passed, 2 skipped
+Total coverage: 85.29%
+Required coverage: 80%
+```
+
+Slidex compatibility slice:
+
+```bash
+PYTHONPATH=/Users/mango/project/codex/automation-app-damai:/Users/mango/project/codex/automation-kit:/Users/mango/project/codex/slidex /opt/homebrew/bin/pytest -q -o addopts='' tests/test_workflow.py -k 'visual_request or visual_result'
+```
+
+Result:
+
+```text
+2 passed, 4 deselected
+```
+
+### Production Code Quality Review
+
+Mode: checkpoint.
+
+Findings: no P0/P1/P2 correctness, boundary, safety, or irreversible operation
+issues found in the current diff.
+
+Improvement suggestions:
+
+- Add a later live-browser Damai workflow test when production page ownership is
+  available.
+
+Quality score: 90/100.
+
+Status: passed.
+
+### Todo Status
+
+- Damai app-level slidex request helper: done.
+- Damai app-level slidex adapter payload helper: done.
+- Default offline test independence: done.
+- Live browser challenge execution: pending future production workflow phase.
+
+### Next Phase Risk
+
+Real Damai browser flows still need to provide the concrete Playwright page and
+decide where visual challenge results enter the user-facing report.
