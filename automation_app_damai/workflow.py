@@ -5,6 +5,60 @@ from automation_runner.workflows import (
 )
 
 
+def build_slider_capability_request(
+    *,
+    page,
+    page_url: str = "",
+    provider: str = "auto",
+    metadata=None,
+    run_id: str = None,
+    task_id: str = None,
+):
+    from automation_core.capabilities import CapabilityRequest
+
+    request_metadata = {}
+    if run_id is not None:
+        request_metadata["run_id"] = run_id
+    if task_id is not None:
+        request_metadata["task_id"] = task_id
+    return CapabilityRequest(
+        capability="visual.challenge",
+        operation="solve",
+        parameters={
+            "challenge_type": "slider_captcha",
+            "context": "playwright_page",
+            "page": page,
+            "page_url": page_url,
+            "provider": provider,
+            "metadata": dict(metadata or {}),
+        },
+        metadata=request_metadata,
+    )
+
+
+async def solve_slider_capability(
+    *,
+    capability_executor,
+    page,
+    page_url: str = "",
+    provider: str = "auto",
+    metadata=None,
+    run_id: str = None,
+    task_id: str = None,
+):
+    if capability_executor is None:
+        return None
+    request = build_slider_capability_request(
+        page=page,
+        page_url=page_url,
+        provider=provider,
+        metadata=metadata,
+        run_id=run_id,
+        task_id=task_id,
+    )
+    return await capability_executor.aexecute(request)
+
+
 def describe_optional_capabilities(visual_solver=None):
     return {
         "visual_challenges": "enabled" if visual_solver is not None else "disabled"

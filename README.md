@@ -11,13 +11,18 @@ This repository owns:
 - Damai-facing CLI glue
 
 Optional visual challenge capabilities, including OCR and captcha solving,
-are injected from `slidex` when needed through the app-layer visual helper
-functions in `automation_app_damai.workflow`. Default offline tests do not
-require `slidex`, browsers, devices, or network access.
+are injected through `automation_core.capabilities`. Slidex is the recommended
+provider, but the workflow only depends on the platform request/result
+contract. Default offline tests do not require `slidex`, browsers, devices, or
+network access.
 
 When a production workflow owns a real Playwright page, call
-`solve_slider_visual_challenge(...)` with an injected slidex
-`VisualChallengeSolver` to build the `PLAYWRIGHT_PAGE` request, solve it, and
-convert the result into workflow payload shapes.
+`solve_slider_capability(...)` with an injected `CapabilityExecutor`. Register
+`SlidexVisualCapability` at the application composition root when Slidex is the
+selected implementation. The older `solve_slider_visual_challenge(...)` entry
+remains available for compatibility.
 
 GitHub repository: `https://github.com/dengyie/automation-app-damai`
+
+Development baseline:
+`https://github.com/dengyie/automation-kit/blob/main/docs/development.md`

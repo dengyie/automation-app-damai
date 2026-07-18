@@ -9,9 +9,11 @@ import pytest
 from automation_core.drivers import ActionResult, ArtifactHandle, SessionInfo
 from automation_runner import WorkflowContext, WorkflowOptions
 from automation_app_damai.workflow import (
+    build_slider_capability_request,
     build_slider_visual_request,
     create_workflow,
     describe_optional_capabilities,
+    solve_slider_capability,
     solve_slider_visual_challenge,
     visual_result_to_workflow_payload,
 )
@@ -234,3 +236,83 @@ def test_solve_slider_visual_challenge_returns_none_without_solver():
     )
 
     assert payload is None
+
+
+def test_build_slider_capability_request_uses_platform_contract_only():
+    page = object()
+
+    request = build_slider_capability_request(
+        page=page,
+        page_url="https://example.test/damai",
+        provider="auto",
+        metadata={"cookie_id": "damai-user"},
+        run_id="run-1",
+        task_id="task-1",
+    )
+
+    assert request.capability == "visual.challenge"
+    assert request.operation == "solve"
+    assert request.parameters["challenge_type"] == "slider_captcha"
+    assert request.parameters["context"] == "playwright_page"
+    assert request.parameters["page"] is page
+    assert request.parameters["metadata"]["cookie_id"] == "damai-user"
+    assert request.metadata == {"run_id": "run-1", "task_id": "task-1"}
+
+
+def test_solve_slider_capability_calls_async_platform_executor():
+    class FakeExecutor:
+        def __init__(self):
+            self.requests = []
+
+        async def aexecute(self, request):
+            self.requests.append(request)
+            from automation_core.capabilities import CapabilityResult
+
+            return CapabilityResult(success=True, provider="fake")
+
+    executor = FakeExecutor()
+    result = asyncio.run(
+        solve_slider_capability(
+            capability_executor=executor,
+            page="page",
+            task_id="task-1",
+        )
+    )
+
+    assert result.success is True
+    assert executor.requests[0].parameters["page"] == "page"
+    assert executor.requests[0].metadata["task_id"] == "task-1"
+
+
+def test_damai_capability_runs_through_platform_executor_and_slidex_adapter():
+    pytest.importorskip("slidex")
+    from automation_core.capabilities import CapabilityExecutor, CapabilityRegistry
+    from slidex.integrations.automation_kit import SlidexVisualCapability
+    from slidex.vision import VisualChallengeResult
+
+    class FakeVisualSolver:
+        async def solve(self, request):
+            assert request.metadata["run_id"] == "run-1"
+            assert request.metadata["task_id"] == "task-1"
+            return VisualChallengeResult(
+                success=True,
+                challenge_type=request.challenge_type,
+                provider="fake-slider",
+            )
+
+    registry = CapabilityRegistry()
+    registry.register(SlidexVisualCapability(visual_solver=FakeVisualSolver()))
+    executor = CapabilityExecutor(registry)
+
+    result = asyncio.run(
+        solve_slider_capability(
+            capability_executor=executor,
+            page="page",
+            run_id="run-1",
+            task_id="task-1",
+        )
+    )
+
+    assert result.success is True
+    assert result.provider == "slidex"
+    assert result.metadata["visual_provider"] == "fake-slider"
