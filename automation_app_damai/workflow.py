@@ -1,8 +1,12 @@
-from automation_runner.workflows import (
-    ManagedWorkflow,
-    WorkflowStep,
-    run_workflow_steps,
+from automation_core.capabilities import (
+    CapabilityExecutor,
+    CapabilityRegistry,
+    CapabilityRequest,
+    CapabilityResolver,
 )
+from automation_runner.policies import CapabilityPolicy
+from automation_runner.runtime import WorkflowRuntime
+from automation_runner.steps import WorkflowStep
 
 
 def build_slider_capability_request(
@@ -11,16 +15,7 @@ def build_slider_capability_request(
     page_url: str = "",
     provider: str = "auto",
     metadata=None,
-    run_id: str = None,
-    task_id: str = None,
 ):
-    from automation_core.capabilities import CapabilityRequest
-
-    request_metadata = {}
-    if run_id is not None:
-        request_metadata["run_id"] = run_id
-    if task_id is not None:
-        request_metadata["task_id"] = task_id
     return CapabilityRequest(
         capability="visual.challenge",
         operation="solve",
@@ -32,45 +27,60 @@ def build_slider_capability_request(
             "provider": provider,
             "metadata": dict(metadata or {}),
         },
-        metadata=request_metadata,
     )
 
 
-async def solve_slider_capability(
+def build_composition_root(
     *,
-    capability_executor,
-    page,
-    page_url: str = "",
-    provider: str = "auto",
-    metadata=None,
-    run_id: str = None,
-    task_id: str = None,
+    session_factory,
+    provider=None,
+    workflow_name: str = "damai-web",
 ):
-    if capability_executor is None:
-        return None
-    request = build_slider_capability_request(
-        page=page,
-        page_url=page_url,
-        provider=provider,
-        metadata=metadata,
-        run_id=run_id,
-        task_id=task_id,
-    )
-    return await capability_executor.aexecute(request)
-
-
-def create_workflow(session_factory, context, options) -> ManagedWorkflow:
-    return ManagedWorkflow(
-        name=context.workflow_name,
+    registry = CapabilityRegistry()
+    if provider is not None:
+        registry.register(provider)
+    resolver = CapabilityResolver(registry)
+    executor = CapabilityExecutor(resolver)
+    return WorkflowRuntime(
         session_factory=session_factory,
-        run_fn=lambda session: run_workflow_steps(
-            session,
-            [
-                WorkflowStep.action(
-                    "open",
-                    url=options.url or "https://example.test/damai",
-                ),
-                WorkflowStep.artifact("screenshot", "landing.png"),
-            ],
-        ),
+        capability_executor=executor,
+        workflow_name=workflow_name,
     )
+
+
+class ComposedWorkflow:
+    def __init__(self, runtime, steps):
+        self.runtime = runtime
+        self.steps = steps
+        self.name = runtime.workflow_name
+
+    def run(self):
+        return self.runtime.run(self.steps)
+
+
+def create_workflow(session_factory, context, options):
+    runtime = build_composition_root(
+        session_factory=session_factory,
+        workflow_name=context.workflow_name,
+    )
+    steps = [
+        WorkflowStep.action(
+            "open",
+            url=options.url or "https://example.test/damai",
+        )
+    ]
+    return ComposedWorkflow(runtime, steps)
+
+
+def create_capability_steps(*, page, page_url: str = "", provider: str = "auto"):
+    return [
+        WorkflowStep.capability(
+            "solve-slider",
+            request=build_slider_capability_request(
+                page=page,
+                page_url=page_url,
+                provider=provider,
+            ),
+            policy=CapabilityPolicy(timeout=30.0, max_attempts=1, backoff=0.0),
+        )
+    ]

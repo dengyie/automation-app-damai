@@ -7,9 +7,10 @@ import pytest
 from automation_core.drivers import ActionResult, ArtifactHandle, SessionInfo
 from automation_runner import WorkflowContext, WorkflowOptions
 from automation_app_damai.workflow import (
+    build_composition_root,
     build_slider_capability_request,
+    create_capability_steps,
     create_workflow,
-    solve_slider_capability,
 )
 
 
@@ -48,7 +49,7 @@ def test_create_workflow_uses_public_automation_runner_contract():
 
     assert workflow.name == "damai-web"
     assert result.success is True
-    assert result.actions[0].message == "open"
+    assert result.steps[0].action_result.message == "open"
 
 
 def test_build_slider_capability_request_uses_platform_contract_only():
@@ -58,8 +59,6 @@ def test_build_slider_capability_request_uses_platform_contract_only():
         page_url="https://example.test/damai",
         provider="auto",
         metadata={"cookie_id": "damai-user"},
-        run_id="run-1",
-        task_id="task-1",
     )
 
     assert request.capability == "visual.challenge"
@@ -68,72 +67,45 @@ def test_build_slider_capability_request_uses_platform_contract_only():
     assert request.parameters["context"] == "playwright_page"
     assert request.parameters["page"] is page
     assert request.parameters["metadata"]["cookie_id"] == "damai-user"
-    assert request.metadata == {"run_id": "run-1", "task_id": "task-1"}
 
 
-def test_solve_slider_capability_returns_none_without_executor():
-    result = asyncio.run(
-        solve_slider_capability(capability_executor=None, page=object())
-    )
+def test_create_capability_steps_uses_platform_request_contract():
+    steps = create_capability_steps(page="page", page_url="https://example.test")
 
-    assert result is None
-
-
-def test_solve_slider_capability_calls_async_platform_executor():
-    class FakeExecutor:
-        def __init__(self):
-            self.requests = []
-
-        async def aexecute(self, request):
-            self.requests.append(request)
-            from automation_core.capabilities import CapabilityResult
-
-            return CapabilityResult(success=True, provider="fake")
-
-    executor = FakeExecutor()
-    result = asyncio.run(
-        solve_slider_capability(
-            capability_executor=executor,
-            page="page",
-            task_id="task-1",
-        )
-    )
-
-    assert result.success is True
-    assert executor.requests[0].parameters["page"] == "page"
-    assert executor.requests[0].metadata["task_id"] == "task-1"
+    assert steps[0].kind == "capability"
+    assert steps[0].request.parameters["page"] == "page"
 
 
 def test_damai_capability_runs_through_platform_executor_and_slidex_adapter():
     pytest.importorskip("slidex")
-    from automation_core.capabilities import CapabilityExecutor, CapabilityRegistry
+    from automation_core.capabilities import CapabilityExecutionProfile, CapabilityResult
     from slidex.integrations.automation_kit import SlidexVisualCapability
     from slidex.vision import VisualChallengeResult
 
     class FakeVisualSolver:
         async def solve(self, request):
             assert request.metadata["run_id"] == "run-1"
-            assert request.metadata["task_id"] == "task-1"
+            assert request.metadata["task_id"]
             return VisualChallengeResult(
                 success=True,
                 challenge_type=request.challenge_type,
                 provider="fake-slider",
             )
 
-    registry = CapabilityRegistry()
-    registry.register(SlidexVisualCapability(visual_solver=FakeVisualSolver()))
-    result = asyncio.run(
-        solve_slider_capability(
-            capability_executor=CapabilityExecutor(registry),
-            page="page",
-            run_id="run-1",
-            task_id="task-1",
-        )
+    session = FakeSession()
+    runtime = build_composition_root(
+        session_factory=lambda: session,
+        provider=SlidexVisualCapability(visual_solver=FakeVisualSolver()),
+        workflow_name="damai-web",
+    )
+    runtime.run_id = "run-1"
+    result = runtime.run(
+        create_capability_steps(page="page")
     )
 
     assert result.success is True
-    assert result.provider == "slidex"
-    assert result.metadata["visual_provider"] == "fake-slider"
+    assert result.steps[0].capability_result.provider == "slidex"
+    assert result.steps[0].capability_result.metadata["visual_provider"] == "fake-slider"
 
 
 def test_damai_workflow_exposes_only_generic_visual_capability_surface():
@@ -145,5 +117,6 @@ def test_damai_workflow_exposes_only_generic_visual_capability_surface():
         "build_slider_visual_request",
         "visual_result_to_workflow_payload",
         "solve_slider_visual_challenge",
+        "solve_slider_capability",
     ]:
         assert not hasattr(module, retired_name)
