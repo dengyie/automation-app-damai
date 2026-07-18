@@ -2,7 +2,7 @@
 
 [[package]]
 name = "automation-kit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python-first automation application toolkit for website and Android workflows"
 optional = false
 python-versions = "^3.8"
@@ -289,5 +289,5 @@ files = [
 
 [metadata]
 lock-version = "2.1"
-python-versions = "^3.8"
-content-hash = "1b32a7875adbc799f74f4742a07245ec44beddc7cf907bf7fa49928eae4ace80"
+python-versions = ">=3.8,<4.0"
+content-hash = "39e35c12100c78631afa995f375b25bec233a2b4cc27a703e7cd3be763e9ba2e"

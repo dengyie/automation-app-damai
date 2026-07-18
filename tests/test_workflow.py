@@ -1,7 +1,5 @@
 import asyncio
-import json
-import sys
-import types
+import inspect
 from pathlib import Path
 
 import pytest
@@ -10,12 +8,8 @@ from automation_core.drivers import ActionResult, ArtifactHandle, SessionInfo
 from automation_runner import WorkflowContext, WorkflowOptions
 from automation_app_damai.workflow import (
     build_slider_capability_request,
-    build_slider_visual_request,
     create_workflow,
-    describe_optional_capabilities,
     solve_slider_capability,
-    solve_slider_visual_challenge,
-    visual_result_to_workflow_payload,
 )
 
 
@@ -57,190 +51,8 @@ def test_create_workflow_uses_public_automation_runner_contract():
     assert result.actions[0].message == "open"
 
 
-def test_damai_workflow_reports_visual_capability_flag():
-    assert describe_optional_capabilities()["visual_challenges"] == "disabled"
-
-
-def test_damai_workflow_can_report_optional_slidex_visual_capability():
-    class FakeVisualSolver:
-        pass
-
-    capabilities = describe_optional_capabilities(visual_solver=FakeVisualSolver())
-
-    assert capabilities["visual_challenges"] == "enabled"
-
-
-def test_create_workflow_accepts_visual_solver_without_changing_offline_flow():
-    class FakeVisualSolver:
-        pass
-
-    session = FakeSession()
-    workflow = create_workflow(
-        session_factory=lambda: session,
-        context=WorkflowContext(workflow_name="damai-web", live=False),
-        options=WorkflowOptions(url="https://example.test/damai"),
-        visual_solver=FakeVisualSolver(),
-    )
-
-    result = workflow.run()
-
-    assert result.success is True
-    assert session.actions[0][0] == "open"
-
-
-def test_build_slider_visual_request_uses_slidex_playwright_page_contract():
-    pytest.importorskip("slidex")
-
-    page = object()
-    request = build_slider_visual_request(
-        page=page,
-        page_url="https://example.test/damai",
-        provider="auto",
-        metadata={"cookie_id": "damai-user"},
-    )
-
-    from slidex.vision import ChallengeType, VisionContext
-
-    assert request.challenge_type == ChallengeType.SLIDER_CAPTCHA
-    assert request.context == VisionContext.PLAYWRIGHT_PAGE
-    assert request.page is page
-    assert request.metadata["cookie_id"] == "damai-user"
-
-
-def test_visual_result_to_workflow_payload_returns_json_safe_shapes():
-    pytest.importorskip("slidex")
-
-    from pathlib import Path
-    from slidex.vision import ChallengeType, VisionArtifact, VisualChallengeResult
-
-    result = VisualChallengeResult(
-        success=True,
-        challenge_type=ChallengeType.SLIDER_CAPTCHA,
-        provider="fake",
-        artifacts=[
-            VisionArtifact(
-                artifact_type="telemetry",
-                path=Path("artifacts/run-1/telemetry/events.jsonl"),
-                metadata={"token": "secret"},
-            )
-        ],
-    )
-
-    payload = visual_result_to_workflow_payload(result, task_id="task-1")
-
-    assert payload["action"]["success"] is True
-    assert payload["artifacts"][0]["path"] == "artifacts/run-1/telemetry/events.jsonl"
-    assert payload["artifacts"][0]["metadata"]["token"] == "[redacted]"
-    assert payload["events"][-1]["event_type"] == "task.end"
-    json.dumps(payload)
-
-
-def test_solve_slider_visual_challenge_uses_lazy_slidex_helpers_without_dependency(monkeypatch):
-    slidex = types.ModuleType("slidex")
-    vision = types.ModuleType("slidex.vision")
-    integrations = types.ModuleType("slidex.integrations")
-    automation_kit = types.ModuleType("slidex.integrations.automation_kit")
-
-    class ChallengeType:
-        SLIDER_CAPTCHA = "slider_captcha"
-
-    class VisionContext:
-        PLAYWRIGHT_PAGE = "playwright_page"
-
-    class VisualChallengeRequest:
-        def __init__(self, **kwargs):
-            self.__dict__.update(kwargs)
-
-    vision.ChallengeType = ChallengeType
-    vision.VisionContext = VisionContext
-    vision.VisualChallengeRequest = VisualChallengeRequest
-    automation_kit.to_action_result = lambda result, prefer_native=False: {
-        "success": result["success"]
-    }
-    automation_kit.to_artifacts = lambda result, prefer_native=False: []
-    automation_kit.to_events = lambda result, task_id=None, prefer_native=False: [
-        {"event_type": "task.end", "task_id": task_id, "payload": result}
-    ]
-
-    monkeypatch.setitem(sys.modules, "slidex", slidex)
-    monkeypatch.setitem(sys.modules, "slidex.vision", vision)
-    monkeypatch.setitem(sys.modules, "slidex.integrations", integrations)
-    monkeypatch.setitem(
-        sys.modules,
-        "slidex.integrations.automation_kit",
-        automation_kit,
-    )
-
-    class FakeVisualSolver:
-        async def solve(self, request):
-            assert request.context == VisionContext.PLAYWRIGHT_PAGE
-            assert request.page == "page"
-            return {"success": True}
-
-    payload = asyncio.run(
-        solve_slider_visual_challenge(
-            visual_solver=FakeVisualSolver(),
-            page="page",
-            task_id="task-1",
-        )
-    )
-
-    assert payload["action"]["success"] is True
-    assert payload["events"][0]["task_id"] == "task-1"
-
-
-def test_solve_slider_visual_challenge_calls_slidex_solver_and_returns_payload():
-    pytest.importorskip("slidex")
-
-    from slidex.vision import ChallengeType, VisualChallengeResult
-
-    class FakeVisualSolver:
-        def __init__(self):
-            self.requests = []
-
-        async def solve(self, request):
-            self.requests.append(request)
-            return VisualChallengeResult(
-                success=True,
-                challenge_type=request.challenge_type,
-                provider="fake",
-                metadata={"page_url": request.page_url},
-            )
-
-    page = object()
-    solver = FakeVisualSolver()
-
-    payload = asyncio.run(
-        solve_slider_visual_challenge(
-            visual_solver=solver,
-            page=page,
-            page_url="https://example.test/damai",
-            task_id="visual-1",
-            metadata={"cookie_id": "damai-user"},
-        )
-    )
-
-    assert solver.requests[0].challenge_type == ChallengeType.SLIDER_CAPTCHA
-    assert solver.requests[0].page is page
-    assert solver.requests[0].metadata["cookie_id"] == "damai-user"
-    assert payload["action"]["success"] is True
-    assert payload["events"][-1]["payload"]["metadata"]["page_url"] == "https://example.test/damai"
-
-
-def test_solve_slider_visual_challenge_returns_none_without_solver():
-    payload = asyncio.run(
-        solve_slider_visual_challenge(
-            visual_solver=None,
-            page=object(),
-        )
-    )
-
-    assert payload is None
-
-
 def test_build_slider_capability_request_uses_platform_contract_only():
     page = object()
-
     request = build_slider_capability_request(
         page=page,
         page_url="https://example.test/damai",
@@ -257,6 +69,14 @@ def test_build_slider_capability_request_uses_platform_contract_only():
     assert request.parameters["page"] is page
     assert request.parameters["metadata"]["cookie_id"] == "damai-user"
     assert request.metadata == {"run_id": "run-1", "task_id": "task-1"}
+
+
+def test_solve_slider_capability_returns_none_without_executor():
+    result = asyncio.run(
+        solve_slider_capability(capability_executor=None, page=object())
+    )
+
+    assert result is None
 
 
 def test_solve_slider_capability_calls_async_platform_executor():
@@ -302,11 +122,9 @@ def test_damai_capability_runs_through_platform_executor_and_slidex_adapter():
 
     registry = CapabilityRegistry()
     registry.register(SlidexVisualCapability(visual_solver=FakeVisualSolver()))
-    executor = CapabilityExecutor(registry)
-
     result = asyncio.run(
         solve_slider_capability(
-            capability_executor=executor,
+            capability_executor=CapabilityExecutor(registry),
             page="page",
             run_id="run-1",
             task_id="task-1",
@@ -316,3 +134,16 @@ def test_damai_capability_runs_through_platform_executor_and_slidex_adapter():
     assert result.success is True
     assert result.provider == "slidex"
     assert result.metadata["visual_provider"] == "fake-slider"
+
+
+def test_damai_workflow_exposes_only_generic_visual_capability_surface():
+    import automation_app_damai.workflow as module
+
+    assert "visual_solver" not in inspect.signature(module.create_workflow).parameters
+    for retired_name in [
+        "describe_optional_capabilities",
+        "build_slider_visual_request",
+        "visual_result_to_workflow_payload",
+        "solve_slider_visual_challenge",
+    ]:
+        assert not hasattr(module, retired_name)

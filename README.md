@@ -19,8 +19,7 @@ network access.
 When a production workflow owns a real Playwright page, call
 `solve_slider_capability(...)` with an injected `CapabilityExecutor`. Register
 `SlidexVisualCapability` at the application composition root when Slidex is the
-selected implementation. The older `solve_slider_visual_challenge(...)` entry
-remains available for compatibility.
+selected implementation.
 
 GitHub repository: `https://github.com/dengyie/automation-app-damai`
 

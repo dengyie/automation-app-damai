@@ -7,11 +7,55 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.11"]
+    defaults:
+      run:
+        working-directory: automation-app-damai
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: automation-app-damai
+      - uses: actions/checkout@v4
+        with:
+          repository: dengyie/automation-kit
+          path: automation-kit
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install -e ../automation-kit
+      - run: python -m pip install -e . --no-deps
+      - run: python -m pip install "pytest>=8,<9" "pytest-cov>=5,<6"
+      - run: python -m pytest -q
+
+  slidex-contract:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: automation-app-damai
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: automation-app-damai
+      - uses: actions/checkout@v4
+        with:
+          repository: dengyie/automation-kit
+          path: automation-kit
+      - uses: actions/checkout@v4
+        with:
+          repository: dengyie/slidex
+          path: slidex
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - uses: abatilo/actions-poetry@v3
-      - run: poetry install
-      - run: poetry run pytest -q
+        with:
+          poetry-version: "2.4.1"
+      - run: poetry check --lock
+      - run: python -m pip install -e ../automation-kit
+      - run: python -m pip install -e . --no-deps
+      - run: python -m pip install -e ../slidex
+      - run: python -m pip install "pytest>=8,<9" "pytest-cov>=5,<6"
+      - run: python -m pytest -q
