@@ -9,6 +9,14 @@ dependencies = [
     "automation-kit>=0.4.0,<0.5.0",
 ]
 
+[project.optional-dependencies]
+live = [
+    "playwright>=1,<2",
+]
+live-patchright = [
+    "patchright>=1,<2",
+]
+
 [tool.poetry.dependencies]
 automation-kit = { path = "../automation-kit", develop = true }
 
