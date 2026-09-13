@@ -9,7 +9,6 @@ from automation_app_damai.config import DamaiAppConfig, validate_browser_engine
 from automation_app_damai.live_factory import (
     PlaywrightSession,
     create_live_session_factory,
-    validate_engine,
 )
 
 
@@ -119,13 +118,13 @@ def _install_fake_engine(monkeypatch, name, page):
 # --- engine selection -------------------------------------------------------
 
 
-def test_validate_engine_normalizes_and_rejects():
-    assert validate_engine(" Patchright ") == "patchright"
-    assert validate_engine("playwright") == "playwright"
-    with pytest.raises(ValueError, match="browser engine must be one of"):
-        validate_engine("camoufox")
-    with pytest.raises(ValueError, match="browser engine must be one of"):
-        validate_engine(None)
+def test_engine_validation_normalizes_and_rejects():
+    assert validate_browser_engine(" Patchright ") == "patchright"
+    assert validate_browser_engine("playwright") == "playwright"
+    with pytest.raises(ValueError, match="browser_engine must be one of"):
+        validate_browser_engine("camoufox")
+    with pytest.raises(ValueError, match="browser_engine must be one of"):
+        validate_browser_engine(None)
 
 
 def test_config_browser_engine_default_and_validation():
@@ -169,7 +168,7 @@ def test_live_factory_dispatches_engines(monkeypatch):
 
 
 def test_live_factory_rejects_unknown_engine():
-    with pytest.raises(ValueError, match="browser engine must be one of"):
+    with pytest.raises(ValueError, match="browser_engine must be one of"):
         create_live_session_factory(engine="undetected")
 
 
@@ -283,6 +282,69 @@ def test_stop_is_idempotent_and_closes_owned_resources():
 
     session.stop()
     session.stop()
+
+    assert driver.chromium.browser.closed is True
+    assert driver.stopped is True
+
+
+def test_stop_closes_remaining_resources_then_propagates_first_error():
+    class BrokenContext(FakeContext):
+        def close(self):
+            raise RuntimeError("context already dead")
+
+    page = FakePage()
+    context = BrokenContext(page)
+    driver = FakeDriver(FakeBrowser(context))
+    session = PlaywrightSession(
+        page,
+        teardown=(context, driver.chromium.browser, driver),
+    )
+    session.start()
+
+    with pytest.raises(RuntimeError, match="context already dead"):
+        session.stop()
+
+    # The remaining resources are still closed despite the first failure.
+    assert driver.chromium.browser.closed is True
+    assert driver.stopped is True
+
+
+def test_live_factory_rolls_back_on_launch_failure(monkeypatch):
+    class LaunchFailChromium:
+        def launch(self, **kwargs):
+            raise RuntimeError("browser binary missing")
+
+    page = FakePage()
+    driver = FakeDriver(FakeBrowser(FakeContext(page)))
+    driver.chromium = LaunchFailChromium()
+    fake = types.ModuleType("playwright.sync_api")
+    fake.sync_playwright = lambda: FakeSyncPlaywright(driver)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", fake)
+
+    factory = create_live_session_factory(engine="playwright")
+
+    with pytest.raises(AdapterStartupError, match="failed to launch"):
+        factory()
+
+    # The started driver process is stopped during rollback.
+    assert driver.stopped is True
+
+
+def test_live_factory_rolls_back_browser_on_context_failure(monkeypatch):
+    class ContextFailBrowser(FakeBrowser):
+        def new_context(self):
+            raise RuntimeError("context creation denied")
+
+    page = FakePage()
+    driver = FakeDriver(ContextFailBrowser(FakeContext(page)))
+    fake = types.ModuleType("playwright.sync_api")
+    fake.sync_playwright = lambda: FakeSyncPlaywright(driver)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", fake)
+
+    factory = create_live_session_factory(engine="playwright")
+
+    with pytest.raises(AdapterStartupError):
+        factory()
 
     assert driver.chromium.browser.closed is True
     assert driver.stopped is True

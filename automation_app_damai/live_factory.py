@@ -17,22 +17,20 @@ from typing import Any, Callable, Optional, Sequence, Tuple
 from adapters.errors import AdapterArtifactError, AdapterStartupError
 from automation_core.drivers import ActionResult, ArtifactHandle, SessionInfo
 
-from automation_app_damai.config import SUPPORTED_BROWSER_ENGINES
+from automation_app_damai.config import validate_browser_engine
 
 SessionFactory = Callable[[], "PlaywrightSession"]
 
 CloseHooks = Tuple[Any, ...]
 
 
-def validate_engine(engine: str) -> str:
-    if (
-        not isinstance(engine, str)
-        or engine.strip().lower() not in SUPPORTED_BROWSER_ENGINES
-    ):
-        raise ValueError(
-            "browser engine must be one of: %s" % ", ".join(SUPPORTED_BROWSER_ENGINES)
-        )
-    return engine.strip().lower()
+def _close_resource(resource: Any) -> None:
+    """Invoke the resource's single close hook (``close`` before ``stop``)."""
+    for hook in ("close", "stop"):
+        method = getattr(resource, hook, None)
+        if callable(method):
+            method()
+            return
 
 
 def _import_sync_playwright(engine: str):
@@ -78,16 +76,18 @@ class PlaywrightSession:
     def stop(self) -> None:
         if not self._started:
             return
+        # Close every owned resource even if one close fails; the first
+        # exception then propagates so the runtime records a cleanup
+        # failure (development.md §4.6) instead of the leak being silent.
+        errors = []
         for resource in self._teardown:
-            for hook in ("close", "stop"):
-                method = getattr(resource, hook, None)
-                if callable(method):
-                    try:
-                        method()
-                    except Exception:
-                        pass
-                    break
+            try:
+                _close_resource(resource)
+            except Exception as exc:  # noqa: BLE001 - collected, then raised
+                errors.append(exc)
         self._started = False
+        if errors:
+            raise errors[0]
 
     def execute_action(self, action_name: str, **kwargs: Any) -> ActionResult:
         if action_name == "open":
@@ -192,20 +192,32 @@ def create_live_session_factory(
     artifact_root: Optional[Path] = None,
 ) -> SessionFactory:
     """Return a zero-arg factory launching chromium via the requested engine."""
-    normalized = validate_engine(engine)
+    normalized = validate_browser_engine(engine)
 
     def factory() -> PlaywrightSession:
         try:
             sync_playwright = _import_sync_playwright(normalized)
-            driver = sync_playwright().start()
-            browser = driver.chromium.launch(headless=headless)
-            context = browser.new_context()
-            page = context.new_page()
         except ImportError:
             # A missing SDK is an actionable operator error, not a
             # generic startup failure - keep the install hint.
             raise
+        driver = None
+        browser = None
+        context = None
+        try:
+            driver = sync_playwright().start()
+            browser = driver.chromium.launch(headless=headless)
+            context = browser.new_context()
+            page = context.new_page()
         except Exception as exc:
+            # Roll back whatever already started; the primary error wins.
+            for resource in (context, browser, driver):
+                if resource is None:
+                    continue
+                try:
+                    _close_resource(resource)
+                except Exception:
+                    pass
             raise AdapterStartupError(
                 "failed to launch %s browser" % normalized
             ) from exc
