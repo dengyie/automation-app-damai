@@ -2,3 +2,7 @@
 __pycache__/
 .pytest_cache/
 .coverage
+
+# Inspection artifacts (tools/inspect_network.py output) stay local: they are
+# redacted but still describe live interface traffic.
+artifacts/

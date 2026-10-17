@@ -23,6 +23,14 @@ SessionFactory = Callable[[], "PlaywrightSession"]
 
 CloseHooks = Tuple[Any, ...]
 
+#: Recording options for the authorized inspection tool (``tools/inspect_network.py``,
+#: task 13). Full request/timeline capture with response bodies omitted, so the
+#: raw HAR never holds page content and only the redacted artifact can be kept.
+HAR_RECORD_OPTIONS = {
+    "record_har_mode": "full",
+    "record_har_content": "omit",
+}
+
 
 def _close_resource(resource: Any) -> None:
     """Invoke the resource's single close hook (``close`` before ``stop``)."""
@@ -190,8 +198,14 @@ def create_live_session_factory(
     engine: str = "playwright",
     headless: bool = True,
     artifact_root: Optional[Path] = None,
+    record_har_path: Optional[Path] = None,
 ) -> SessionFactory:
-    """Return a zero-arg factory launching chromium via the requested engine."""
+    """Return a zero-arg factory launching chromium via the requested engine.
+
+    ``record_har_path`` is tool-only (task 13): when set, the context records a
+    HAR there and closes the same resource chain, which is what flushes the
+    file. Production workflows leave it unset and keep the plain context.
+    """
     normalized = validate_browser_engine(engine)
 
     def factory() -> PlaywrightSession:
@@ -204,10 +218,14 @@ def create_live_session_factory(
         driver = None
         browser = None
         context = None
+        context_kwargs: dict = {}
+        if record_har_path is not None:
+            context_kwargs["record_har_path"] = str(record_har_path)
+            context_kwargs.update(HAR_RECORD_OPTIONS)
         try:
             driver = sync_playwright().start()
             browser = driver.chromium.launch(headless=headless)
-            context = browser.new_context()
+            context = browser.new_context(**context_kwargs)
             page = context.new_page()
         except Exception as exc:
             # Roll back whatever already started; the primary error wins.

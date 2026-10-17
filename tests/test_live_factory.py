@@ -70,8 +70,10 @@ class FakeBrowser:
     def __init__(self, context):
         self.context = context
         self.closed = False
+        self.context_kwargs = None
 
-    def new_context(self):
+    def new_context(self, **kwargs):
+        self.context_kwargs = kwargs
         return self.context
 
     def close(self):
@@ -152,6 +154,9 @@ def test_live_factory_dispatches_engines(monkeypatch):
     assert session.info.driver_name == "playwright"
     assert session.page is page
     assert playwright_driver.chromium.launch_kwargs == {"headless": False}
+    # Production sessions get a plain context; only the inspection tool opts in
+    # to HAR recording (see test_live_factory_passes_har_recording_options).
+    assert playwright_driver.chromium.browser.context_kwargs == {}
     session.stop()
     assert playwright_driver.stopped is True
 
@@ -165,6 +170,24 @@ def test_live_factory_dispatches_engines(monkeypatch):
     assert patchright_driver.stopped is False
     patchright_session.stop()
     assert patchright_driver.stopped is True
+
+
+def test_live_factory_passes_har_recording_options(monkeypatch, tmp_path):
+    page = FakePage()
+    driver = _install_fake_engine(monkeypatch, "playwright.sync_api", page)
+    raw_path = tmp_path / "raw.har"
+
+    session = create_live_session_factory(
+        engine="playwright", record_har_path=raw_path
+    )()
+
+    assert session.page is page
+    assert driver.chromium.browser.context_kwargs == {
+        "record_har_path": str(raw_path),
+        # Fixed by the task 13 data red line: full request/timeline, no bodies.
+        "record_har_mode": "full",
+        "record_har_content": "omit",
+    }
 
 
 def test_live_factory_rejects_unknown_engine():
