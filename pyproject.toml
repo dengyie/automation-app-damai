@@ -1,6 +1,6 @@
 [project]
 name = "automation-app-damai"
-version = "0.3.0"
+version = "0.3.1"
 description = "Damai application workflows built on automation-kit"
 authors = [{ name = "mango" }]
 readme = "README.md"
@@ -10,7 +10,7 @@ requires-python = ">=3.8,<4.0"
 # （见 [tool.poetry.dependencies] 的 path 依赖与 ci.yml），这一行从不被包源解析，
 # 只记录适配的版本区间。若将来 kit 上架，本行即为可直接解析的依赖，无需改动。
 dependencies = [
-    "automation-kit>=0.5.0,<0.6.0",
+    "automation-kit>=0.5.0,<0.7.0",
 ]
 
 [project.optional-dependencies]
